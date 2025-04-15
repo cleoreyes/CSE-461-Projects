@@ -48,6 +48,22 @@ def stage_b(sock, num, length, udp_port, secretA):
     print(f"Received: tcp_port={tcp_port}, secretB={secretB}")
     return tcp_port, secretB
 
+def stage_c(sock, tcp_port, secretB):
+    print("---- Starting Stage C ----")
+
+    # receive packet from server and process
+    data = sock.recv(1024)
+
+    if len(data) < 13:
+        raise Exception(f"Stage C response too short: got {len(data)} bytes, expected 13")
+
+    payload = Packet.extract_payload(data)
+    
+    num2, len2, secretC, c = struct.unpack('!IIIc', payload)
+    
+    print(f"Received: num2={num2}, len2={len2}, secretC={secretC}, c={c.decode()}")
+    return num2, len2, secretC, c.decode()
+
 def send_ack(sock, processed_packet, id, udp_port, retries=10):
 
     print(f"Sending packet with ack: {processed_packet}")
@@ -73,13 +89,30 @@ def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     print(f"Sending to {SERVER_ADDR}:{UDP_PORT}")
     sock.settimeout(TIMEOUT)
+
+    # start stage_a
     num, length, udp_port, secretA = stage_a(sock)
     
-    print("\n stage A complete!")
+    print("\n stage A complete!\n")
 
+    # start stage_b
     tcp_port, secretB = stage_b(sock, num, length, udp_port, secretA)
 
-    print("\n stage B complete!")
+    print("\n stage B complete!\n")
+    sock.close()
+
+    tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_sock.connect((SERVER_ADDR, tcp_port))
+
+    # start stage_c
+    num2, len2, secretC, c = stage_c(tcp_sock, tcp_port, secretB)
+
+    print("\n stage C complete!\n")
+
+    
+    tcp_sock.close()
+
+
 
 
 
