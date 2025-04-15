@@ -1,14 +1,14 @@
 import socket
 import struct
-# import struct
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from packet_struct import Packet
 
-SERVER_ADDR = 'attu2.cs.washington.edu'
 TIMEOUT = 3
 RETRANSMIT_INTERVAL = 1
-UDP_PORT = 12235
 
-def stage_a(sock):
+def stage_a(sock, SERVER_ADDR, UDP_PORT):
     print("---- Starting Stage A ----")
 
     payload = b'hello world\0'
@@ -30,7 +30,7 @@ def stage_a(sock):
 
     return num, length, udp_port, secretA
 
-def stage_b(sock, num, length, udp_port, secretA):
+def stage_b(sock, num, length, udp_port, secretA, SERVER_ADDR, UDP_PORT):
     print("---- Starting Stage B ----")
     
     payload = b'\x00' * length
@@ -39,7 +39,7 @@ def stage_b(sock, num, length, udp_port, secretA):
         full_payload = struct.pack('!I', id) + payload
         packet = Packet(len(full_payload), secretA, 1, full_payload)
         processed_packet = packet.wrap_payload()
-        send_ack(sock, processed_packet, id, udp_port)
+        send_ack(sock, processed_packet, id, udp_port, SERVER_ADDR, UDP_PORT)
     
     data, _ = sock.recvfrom(1024)
     payload = Packet.extract_payload(data)
@@ -64,7 +64,7 @@ def stage_c(sock, tcp_port, secretB):
     print(f"Received: num2={num2}, len2={len2}, secretC={secretC}, c={c.decode()}")
     return num2, len2, secretC, c.decode()
 
-def send_ack(sock, processed_packet, id, udp_port, retries=10):
+def send_ack(sock, processed_packet, id, udp_port, SERVER_ADDR, UDP_PORT, retries=10):
 
     print(f"Sending packet with ack: {processed_packet}")
 
@@ -109,18 +109,21 @@ def stage_d(sock, num2, len2, secretC, c):
     return secretD
 
 def main():
+
+    SERVER_ADDR = str(sys.argv[1])
+    UDP_PORT = int(sys.argv[2])
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     print(f"Sending to {SERVER_ADDR}:{UDP_PORT}")
     sock.settimeout(TIMEOUT)
 
     # start stage_a
-    num, length, udp_port, secretA = stage_a(sock)
+    num, length, udp_port, secretA = stage_a(sock, SERVER_ADDR, UDP_PORT)
     
     print("\n stage A complete!\n")
 
     # start stage_b
-    tcp_port, secretB = stage_b(sock, num, length, udp_port, secretA)
+    tcp_port, secretB = stage_b(sock, num, length, udp_port, secretA, SERVER_ADDR, UDP_PORT)
 
     print("\n stage B complete!\n")
     sock.close()
