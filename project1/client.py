@@ -84,6 +84,30 @@ def send_ack(sock, processed_packet, id, udp_port, retries=10):
         except socket.timeout:
             print(f"Timeout, retrying ({i + 1})")
 
+def stage_d(sock, num2, len2, secretC, c):
+    print("---- Starting Stage D ----")
+    
+    payload = c.encode() * len2 # create payload of length len2 with c
+    
+    # send num2 payloads
+    for i in range(num2):
+        packet = Packet(len(payload), secretC, 1, payload)
+        processed_packet = packet.wrap_payload()
+        print(f"Sending packet {i+1}/{num2} with payload length {len(payload)}")
+        sock.send(processed_packet)
+    
+    # receive response from server
+    data = sock.recv(1024)
+    
+    if len(data) < 4:
+        raise Exception(f"Stage D response too short: got {len(data)} bytes, expected at least 4")
+    
+    payload = Packet.extract_payload(data)
+    secretD = struct.unpack('!I', payload)[0]
+    
+    print(f"Received: secretD={secretD}")
+    return secretD
+
 def main():
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -109,13 +133,19 @@ def main():
 
     print("\n stage C complete!\n")
 
-    
+    # start stage_d
+
+    secretD = stage_d(tcp_sock, num2, len2, secretC, c)
+
+    print("\n stage D complete!\n")
+
+    print("\n---- Final Output ----")
+    print(f"Secret A: {secretA}")
+    print(f"Secret B: {secretB}")
+    print(f"Secret C: {secretC}")
+    print(f"Secret D: {secretD}")
+
     tcp_sock.close()
-
-
-
-
-
 
 if __name__ == "__main__":
     main()
