@@ -1,7 +1,7 @@
 import struct
 
 class Packet:
-    HEADER_FORMAT = '!I I H H'
+    HEADER_FORMAT = '!IIHH'
     HEADER_SIZE = 12
 
     # initialize mock header + payload with class

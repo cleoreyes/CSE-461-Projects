@@ -5,7 +5,7 @@ from packet_struct import Packet
 
 SERVER_ADDR = 'attu2.cs.washington.edu'
 TIMEOUT = 3
-RETRANSMIT_INTERVAL = 1
+RETRANSMIT_INTERVAL = 2
 UDP_PORT = 12235
 
 def stage_a(sock):
@@ -48,7 +48,7 @@ def stage_b(sock, num, length, udp_port, secretA):
     print(f"Received: tcp_port={tcp_port}, secretB={secretB}")
     return tcp_port, secretB
 
-def stage_c(sock, tcp_port, secretB):
+def stage_c(sock, tcp_port):
     print("---- Starting Stage C ----")
 
     # receive packet from server and process
@@ -62,7 +62,38 @@ def stage_c(sock, tcp_port, secretB):
     num2, len2, secretC, c = struct.unpack('!IIIc', payload)
     
     print(f"Received: num2={num2}, len2={len2}, secretC={secretC}, c={c.decode()}")
-    return num2, len2, secretC, c.decode()
+    return num2, len2, secretC, c
+
+def stage_d(sock, num2, len2, secretC, c):
+    print("---- Starting Stage D ----")
+    
+    payload = c * len2
+    print(f"Stage D: Sending {num2} packets of length {len(payload)} filled with char '{c}'")
+    
+    # send num2 payloads
+    for i in range(num2):
+        packet = Packet(len(payload), secretC, 1, payload)
+        processed_packet = packet.wrap_payload()
+        print(f"Sending packet {i+1}/{num2} with payload length {len(payload)}")
+        sock.sendall(processed_packet)
+    
+    header = recv_data(sock, Packet.HEADER_SIZE)
+    if len(header) < Packet.HEADER_SIZE:
+        raise Exception("Stage D: Incomplete header received")
+
+    payload_len, _, _, _ = struct.unpack(Packet.HEADER_FORMAT, header)
+    data = recv_data(sock, payload_len)
+
+    payload = Packet.extract_payload(header + data)
+
+    if len(payload) < 4:
+        raise Exception(f"Stage D response too short: got {len(payload)} bytes, expected 4")
+    
+    secretD = struct.unpack('!I', payload)[0]
+    
+    print(f"Received: secretD={secretD}")
+    return secretD
+
 
 def send_ack(sock, processed_packet, id, udp_port, retries=10):
 
@@ -84,8 +115,15 @@ def send_ack(sock, processed_packet, id, udp_port, retries=10):
         except socket.timeout:
             print(f"Timeout, retrying ({i + 1})")
 
+def recv_data(sock, length):
+    data = b''
+    while len(data) < length:
+        chunk = sock.recv(length - len(data))
+        data += chunk
+    return data
+
+
 def main():
-    
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     print(f"Sending to {SERVER_ADDR}:{UDP_PORT}")
     sock.settimeout(TIMEOUT)
@@ -105,16 +143,23 @@ def main():
     tcp_sock.connect((SERVER_ADDR, tcp_port))
 
     # start stage_c
-    num2, len2, secretC, c = stage_c(tcp_sock, tcp_port, secretB)
+    num2, len2, secretC, c = stage_c(tcp_sock, tcp_port)
 
     print("\n stage C complete!\n")
 
-    
+    # start stage_d
+
+    secretD = stage_d(tcp_sock, num2, len2, secretC, c)
+
+    print("\n stage D complete!\n")
+
+    print("\n---- Final Output ----")
+    print(f"Secret A: {secretA}")
+    print(f"Secret B: {secretB}")
+    print(f"Secret C: {secretC}")
+    print(f"Secret D: {secretD}")
+
     tcp_sock.close()
-
-
-
-
 
 
 if __name__ == "__main__":
