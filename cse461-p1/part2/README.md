@@ -10,7 +10,7 @@ Cleo Reyes, creyes25
 
 ### Instructions on how to compile and run code
 
-Navigate (cd) to into `part1 directory` and execute command below 
+Navigate (cd) to into `part2 directory` and execute command below 
 ```
 ./run_server.sh <server_name> <port>
 ```
