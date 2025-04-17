@@ -5,7 +5,7 @@ import random
 import struct
 import sys
 
-HOST = "0.0.0.0"  # Any network interface
+HOST = sys.argv[1]
 PORT = int(sys.argv[2])
 RECV_SIZE = 1024
 TIMEOUT = 3  # seconds
@@ -72,7 +72,6 @@ def handle_stage_b(addr, num, length, udp_port, secretA):
     udp_sock.settimeout(TIMEOUT)
 
     received = 0  # number of packets received
-    last_acked = -1  # to track the last acknowledged packet
     print(f"[{addr}] Listening on UDP port {udp_port} for Stage B")
     while received < num:
         try:
@@ -177,7 +176,6 @@ def handle_stage_d(conn, num2, len2, secretC, c):
 
 def start_tcp_server(tcp_port):
     tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     tcp_sock.bind((HOST, tcp_port))
     tcp_sock.listen(1)
     tcp_sock.settimeout(TIMEOUT)
@@ -212,18 +210,18 @@ def client_thread(data, addr, udp_sock):
 def start_udp_server():
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_sock.bind((HOST, PORT))
-    print(f"[SERVER] Listening on UDP port {PORT}")
+    print(f"[UDP] Listening on UDP port {PORT}")
     udp_sock.settimeout(TIMEOUT)
 
     while True:
         try:
             data, addr = udp_sock.recvfrom(RECV_SIZE)  # Corrected to use recvfrom
-            print(f"[SERVER] Received data from {addr} ({len(data)} bytes)")
+            print(f"[UDP] Received data from {addr} ({len(data)} bytes)")
             if data:
                 thread = threading.Thread(target=client_thread, args=(data, addr, udp_sock))
                 thread.start()
         except socket.timeout:
-            print("[SERVER] UDP socket timed out")
+            print("[UDP] UDP socket timed out")
 
 if __name__ == "__main__":
     start_udp_server()
