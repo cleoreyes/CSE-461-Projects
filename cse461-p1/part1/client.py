@@ -1,18 +1,18 @@
 import socket
 import struct
 # import struct
-from packet_struct import Packet  # TODO
+from packet_struct import Packet
 import sys
 
 SERVER_ADDR = sys.argv[1]
 TIMEOUT = 3
-RETRANSMIT_INTERVAL = 2
+RETRANSMIT_INTERVAL = 1
 UDP_PORT = int(sys.argv[2])
 
 def stage_a(sock):
     print("---- Starting Stage A ----")
 
-    payload = b'hello world\0'  # 12 bytes
+    payload = b'hello world\0'
     packet = Packet(len(payload), 0, 1, payload)
     processed_packet = packet.wrap_payload()
 
@@ -103,11 +103,11 @@ def stage_d(sock, num2, len2, secretC, c):
     return secretD
 
 
-def send_ack(sock, processed_packet, id, udp_port, retries=10):
+def send_ack(sock, processed_packet, id, udp_port):
 
     print(f"Sending packet with ack: {processed_packet}")
 
-    for i in range(retries):
+    while True:
         sock.sendto(processed_packet, (SERVER_ADDR, udp_port))
         try:
             sock.settimeout(RETRANSMIT_INTERVAL)
@@ -121,7 +121,7 @@ def send_ack(sock, processed_packet, id, udp_port, retries=10):
                 print(f"ACK received for id {ack_id}")
                 return data
         except socket.timeout:
-            print(f"Timeout, retrying ({i + 1})")
+            print(f"Timeout, retrying")
 
 def recv_data(sock, length):
     data = b''
