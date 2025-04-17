@@ -1,17 +1,18 @@
 import socket
 import struct
 # import struct
-from packet_struct import Packet
+from packet_struct import Packet  # TODO
+import sys
 
-SERVER_ADDR = 'attu2.cs.washington.edu'
+SERVER_ADDR = sys.argv[1]
 TIMEOUT = 3
 RETRANSMIT_INTERVAL = 2
-UDP_PORT = 12235
+UDP_PORT = int(sys.argv[2])
 
 def stage_a(sock):
     print("---- Starting Stage A ----")
 
-    payload = b'hello world\0'
+    payload = b'hello world\0'  # 12 bytes
     packet = Packet(len(payload), 0, 1, payload)
     processed_packet = packet.wrap_payload()
 

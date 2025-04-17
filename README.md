@@ -1,3 +1,3 @@
 # Projects for CSE 461 at the Univesity of Washington
 
-## testing attu
+Python 3.9.21
