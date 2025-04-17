@@ -53,12 +53,19 @@ def stage_c(sock, tcp_port):
     print("---- Starting Stage C ----")
 
     # receive packet from server and process
-    data = sock.recv(1024)
+    header = recv_data(sock, Packet.HEADER_SIZE)
 
-    if len(data) < 13:
-        raise Exception(f"Stage C response too short: got {len(data)} bytes, expected 13")
+    if len(header) < Packet.HEADER_SIZE:
+        raise Exception("Stage C: Incomplete header received")
 
-    payload = Packet.extract_payload(data)
+    payload_len = struct.unpack(Packet.HEADER_FORMAT, header)[0]
+
+    data = recv_data(sock, max(payload_len, 16))
+
+    payload = Packet.extract_payload(header + data)
+
+    if len(payload) < 13:
+        raise Exception(f"Stage C response too short: got {len(payload)} bytes, expected at least 13")
     
     num2, len2, secretC, c = struct.unpack('!IIIc', payload)
     
@@ -82,7 +89,7 @@ def stage_d(sock, num2, len2, secretC, c):
     if len(header) < Packet.HEADER_SIZE:
         raise Exception("Stage D: Incomplete header received")
 
-    payload_len, _, _, _ = struct.unpack(Packet.HEADER_FORMAT, header)
+    payload_len = struct.unpack(Packet.HEADER_FORMAT, header)[0]
     data = recv_data(sock, payload_len)
 
     payload = Packet.extract_payload(header + data)
