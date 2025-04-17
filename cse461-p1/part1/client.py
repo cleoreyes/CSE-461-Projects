@@ -22,10 +22,12 @@ def stage_a(sock):
     print("Sent 'hello world'")
 
     data, _ = sock.recvfrom(1024)
-    if len(data) < 16:
-        raise Exception("Stage A response too short")
 
     payload = Packet.extract_payload(data)
+
+    if len(payload) < 16:
+        raise Exception("Stage A response too short")
+        
     num, length, udp_port, secretA = struct.unpack('!IIII', payload)
     print(f"Received: num={num}, len={length}, udp_port={udp_port}, secretA={secretA}")
 
@@ -43,7 +45,12 @@ def stage_b(sock, num, length, udp_port, secretA):
         send_ack(sock, processed_packet, id, udp_port)
     
     data, _ = sock.recvfrom(1024)
+
     payload = Packet.extract_payload(data)
+
+    if len(payload) < 8:
+        raise Exception("Stage B response too short")
+
     tcp_port, secretB = struct.unpack('!II', payload)
 
     print(f"Received: tcp_port={tcp_port}, secretB={secretB}")
@@ -56,7 +63,7 @@ def stage_c(sock, tcp_port):
     header = recv_data(sock, Packet.HEADER_SIZE)
 
     if len(header) < Packet.HEADER_SIZE:
-        raise Exception("Stage C: Incomplete header received")
+        raise Exception("Stage C header too short")
 
     payload_len = struct.unpack(Packet.HEADER_FORMAT, header)[0]
 
@@ -65,7 +72,7 @@ def stage_c(sock, tcp_port):
     payload = Packet.extract_payload(header + data)
 
     if len(payload) < 13:
-        raise Exception(f"Stage C response too short: got {len(payload)} bytes, expected at least 13")
+        raise Exception(f"Stage C response too short")
     
     num2, len2, secretC, c = struct.unpack('!IIIc', payload)
     
@@ -87,7 +94,7 @@ def stage_d(sock, num2, len2, secretC, c):
     
     header = recv_data(sock, Packet.HEADER_SIZE)
     if len(header) < Packet.HEADER_SIZE:
-        raise Exception("Stage D: Incomplete header received")
+        raise Exception("Stage D header too short")
 
     payload_len = struct.unpack(Packet.HEADER_FORMAT, header)[0]
     data = recv_data(sock, payload_len)
@@ -95,7 +102,7 @@ def stage_d(sock, num2, len2, secretC, c):
     payload = Packet.extract_payload(header + data)
 
     if len(payload) < 4:
-        raise Exception(f"Stage D response too short: got {len(payload)} bytes, expected 4")
+        raise Exception(f"Stage D response too short")
     
     secretD = struct.unpack('!I', payload)[0]
     
@@ -148,7 +155,14 @@ def main():
     sock.close()
 
     tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    tcp_sock.connect((SERVER_ADDR, tcp_port))
+    while True:
+        try:
+            print(f"Connecting to TCP port {tcp_port}...")
+            tcp_sock.connect((SERVER_ADDR, tcp_port))
+            break  # Connection successful, break out of the loop
+        except (ConnectionRefusedError, socket.timeout):
+            print(f"Connection to TCP port {tcp_port} refused. Retrying...")
+            continue  # Retry until connection is successful
 
     # start stage_c
     num2, len2, secretC, c = stage_c(tcp_sock, tcp_port)

@@ -99,6 +99,7 @@ def handle_stage_b(addr, num, length, udp_port, secretA):
 
     tcp_port = random_port()
     secretB = random_secret()
+
     response_payload = struct.pack('!II', tcp_port, secretB)
     packet = Packet(len(response_payload), secretA, 2, response_payload)
 
@@ -176,6 +177,7 @@ def handle_stage_d(conn, num2, len2, secretC, c):
 
 def start_tcp_server(tcp_port):
     tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     tcp_sock.bind((HOST, tcp_port))
     tcp_sock.listen(1)
     tcp_sock.settimeout(TIMEOUT)
