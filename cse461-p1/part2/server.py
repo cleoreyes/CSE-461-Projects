@@ -28,16 +28,21 @@ def random_port():
 def random_secret():
     return random.randint(1000, 99999)
 
+# Helper Function: calculate the padded length of a payload to be a multiple of 4
+def padded_length(n):
+    return ((n + 3) // 4) * 4
+
 def handle_stage_a(data, addr, udp_sock):
     try:
         # Verify the packet length
-        if len(data) != HEADER_SIZE + 12:
-            print(f"[{addr}] Invalid packet length: {len(data)}")
+        pad_len = padded_length(12)
+        if len(data) != HEADER_SIZE + pad_len:
             return None
+
         
         # Verify packet header
         payload_len, psecret, step, student_id = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
-        if payload_len != 12 or psecret != 0 or step != 1 or student_id != STUDENT_ID_LAST3:
+        if payload_len != 12 or psecret != 0 or step != 1:
             print(f"[{addr}] Header validation failed:")
             print(f"  len={payload_len}, secret={psecret}, step={step}, id={student_id}")
             return None
@@ -55,7 +60,7 @@ def handle_stage_a(data, addr, udp_sock):
         secretA = random_secret()
 
         response_payload = struct.pack('!IIII', num, length, udp_port, secretA)
-        packet = Packet(len(response_payload), 0, 1, response_payload)
+        packet = Packet(len(response_payload), 0, 2, response_payload)
 
         print(f"[{addr}] Sending Stage A response: num={num}, len={length}, udp_port={udp_port}, secretA={secretA}")
     
@@ -69,18 +74,18 @@ def handle_stage_b(addr, num, length, udp_port, secretA):
     # Create a UDP socket for this stage at port udp_port
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_sock.bind((HOST, udp_port))
-    udp_sock.settimeout(TIMEOUT)
 
     received = 0  # number of packets received
     print(f"[{addr}] Listening on UDP port {udp_port} for Stage B")
     while received < num:
         try:
+            udp_sock.settimeout(TIMEOUT)
             data, client = udp_sock.recvfrom(2048)
 
             payload = Packet.extract_payload(data)
             if len(payload) != length + 4:
                 continue
-    
+
             packet_id = struct.unpack('!I', payload[:4])[0]  # Extract packet ID as int
             content = payload[4:]
 
@@ -115,7 +120,7 @@ def handle_stage_c(conn, secretB):
     c_byte = bytes([c])  # Convert to bytes
 
     payload = struct.pack('!IIIc', num2, len2, secretC, c_byte)
-    packet = Packet(len(payload), secretB, 3, payload)
+    packet = Packet(len(payload), secretB, 2, payload)
 
     print(f"[TCP] Sending Stage C response: num2={num2}, len2={len2}, secretC={secretC}, c={chr(c)}")
     conn.sendall(packet.wrap_payload())
@@ -131,10 +136,6 @@ def recv_exact(sock, num_bytes):
             raise ConnectionError("Socket closed prematurely")
         buf += chunk
     return buf
-
-# Helper Function: calculate the padded length of a payload to be a multiple of 4
-def padded_length(n):
-    return ((n + 3) // 4) * 4
 
 def handle_stage_d(conn, num2, len2, secretC, c):
     try:
@@ -168,7 +169,7 @@ def handle_stage_d(conn, num2, len2, secretC, c):
         # If all packets were valid, create and send Stage D response
         secretD = random_secret()
         response_payload = struct.pack("!I", secretD)
-        response = Packet(len(response_payload), secretC, 4, response_payload).wrap_payload()
+        response = Packet(len(response_payload), secretC, 2, response_payload).wrap_payload()
         conn.sendall(response)
         print(f"[TCP] Stage D complete. Sent secretD: {secretD}")
     except Exception as e:
@@ -180,9 +181,9 @@ def start_tcp_server(tcp_port):
     tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     tcp_sock.bind((HOST, tcp_port))
     tcp_sock.listen(1)
-    tcp_sock.settimeout(TIMEOUT)
 
     try:
+        tcp_sock.settimeout(TIMEOUT)
         conn, _ = tcp_sock.accept()
         tcp_sock.close()
         return conn
@@ -191,6 +192,13 @@ def start_tcp_server(tcp_port):
         return None
 
 def client_thread(data, addr, udp_sock):
+    # Create a UDP socket for this stage
+    # client_port = int(sys.argv[2])
+    # udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # udp_sock.bind((HOST, client_port))
+    # udp_sock.settimeout(TIMEOUT)
+
     stage_a = handle_stage_a(data, addr, udp_sock)
     if not stage_a:
         return
@@ -213,10 +221,10 @@ def start_udp_server():
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_sock.bind((HOST, PORT))
     print(f"[UDP] Listening on UDP port {PORT}")
-    udp_sock.settimeout(TIMEOUT)
 
     while True:
         try:
+            udp_sock.settimeout(TIMEOUT)
             data, addr = udp_sock.recvfrom(RECV_SIZE)  # Corrected to use recvfrom
             print(f"[UDP] Received data from {addr} ({len(data)} bytes)")
             if data:
