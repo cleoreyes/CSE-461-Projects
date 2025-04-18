@@ -231,7 +231,7 @@ def start_udp_server():
                 thread = threading.Thread(target=client_thread, args=(data, addr, udp_sock))
                 thread.start()
         except socket.timeout:
-            print("[UDP] UDP socket timed out")
+            continue
 
 if __name__ == "__main__":
     start_udp_server()
