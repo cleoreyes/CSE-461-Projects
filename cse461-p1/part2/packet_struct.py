@@ -10,7 +10,7 @@ class Packet:
         self.payload_len = payload_len
         self.psecret = psecret
         self.step = step
-        self.id_num = 176
+        self.id_num = 696
         self.payload = payload
 
 

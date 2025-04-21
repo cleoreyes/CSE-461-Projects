@@ -4,6 +4,7 @@ from packet_struct import Packet
 import random
 import struct
 import sys
+import time
 
 HOST = sys.argv[1]
 PORT = int(sys.argv[2])
@@ -11,7 +12,7 @@ RECV_SIZE = 1024
 TIMEOUT = 3  # seconds
 HEADER_SIZE = Packet.HEADER_SIZE
 HEADER_FORMAT = Packet.HEADER_FORMAT
-STUDENT_ID_LAST3 = 176  # Assuming 176 is the last 3 digits of student ID?
+STUDENT_ID_LAST3 = 696
 
 # The server should verify the header of every packet received and close any open sockets to the client and/or fail to respond to the client if:
   # unexpected number of buffers have been received
@@ -77,13 +78,18 @@ def handle_stage_b(addr, num, length, udp_port, secretA):
 
     received = 0  # number of packets received
     print(f"[{addr}] Listening on UDP port {udp_port} for Stage B")
+    
+    # Use a timeout for the entire stage
+    start_time = time.time()
+    udp_sock.settimeout(TIMEOUT)
+    
     while received < num:
         try:
-            udp_sock.settimeout(TIMEOUT)
             data, client = udp_sock.recvfrom(2048)
 
             payload = Packet.extract_payload(data)
             if len(payload) != length + 4:
+                print(f"[{addr}] Invalid payload length: expected {length + 4}, got {len(payload)}")
                 continue
 
             packet_id = struct.unpack('!I', payload[:4])[0]  # Extract packet ID as int
@@ -91,25 +97,38 @@ def handle_stage_b(addr, num, length, udp_port, secretA):
 
             # Verify packet ID and content
             if content != b'\x00' * length or packet_id != received:
+                print(f"[{addr}] Invalid packet content or wrong packet ID: expected ID {received}, got {packet_id}")
                 continue
 
-            # Randomly acknoledge packets and the last packet
+            # Randomly acknowledge packets and always acknowledge the last packet
             if random.random() > 0.4 or received == num - 1:
                 ack_payload = struct.pack('!I', packet_id)
                 ack_packet = Packet(4, secretA, 2, ack_payload)
                 udp_sock.sendto(ack_packet.wrap_payload(), client)
                 received += 1
+                print(f"[{addr}] Acknowledged packet {packet_id}, {received}/{num} received")
         except socket.timeout:
-            break
-
+            # If timeout reached, fail the stage
+            print(f"[{addr}] Timeout in Stage B. Only received {received}/{num} packets.")
+            udp_sock.close()
+            return None
+            
+    # Verify that we received exactly the required number of packets
+    if received != num:
+        print(f"[{addr}] Stage B failed: received {received} packets, expected {num}")
+        udp_sock.close()
+        return None
+        
     tcp_port = random_port()
     secretB = random_secret()
 
     response_payload = struct.pack('!II', tcp_port, secretB)
     packet = Packet(len(response_payload), secretA, 2, response_payload)
 
+    print(f"[{addr}] Stage B complete: received all {num} packets.")
     print(f"[{addr}] Sending Stage B response: tcp_port={tcp_port}, secretB={secretB}")
     udp_sock.sendto(packet.wrap_payload(), addr)
+    udp_sock.close()
     return tcp_port, secretB
 
 def handle_stage_c(conn, secretB):
