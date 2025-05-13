@@ -1,4 +1,3 @@
-
 #!/usr/bin/python
 
 from mininet.topo import Topo
