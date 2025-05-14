@@ -10,6 +10,7 @@ from pox.lib.packet import arp, ethernet
 
 log = core.getLogger()
 
+# Convenience mappings of hostnames to ips
 IPS = {
     "h10": "10.0.1.10",
     "h20": "10.0.2.20",
@@ -18,6 +19,7 @@ IPS = {
     "hnotrust": "172.16.10.100",
 }
 
+# Convenience mappings of hostnames to subnets
 SUBNETS = {
     "h10": "10.0.1.0/24",
     "h20": "10.0.2.0/24",
@@ -33,12 +35,15 @@ class Part4Controller(object):
 
     def __init__(self, connection):
         print(connection.dpid)
+        # Keep track of the connection to the switch so that we can
+        # send it messages!
         self.connection = connection
 
         # create ARP table to map IPs to MAC addresses and port
         self.arp_table = {}
-
+        # This binds our PacketIn event listener
         connection.addListeners(self)
+        # use the dpid to figure out what switch is being created
         if connection.dpid == 1:
             self.s1_setup()
         elif connection.dpid == 2:
@@ -53,20 +58,22 @@ class Part4Controller(object):
             print("UNKNOWN SWITCH")
             exit(1)
 
-    def s1_setup(self):
+    def setup(self):
         arp_rule = of.ofp_flow_mod()
         arp_rule.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
         self.connection.send(arp_rule)
+
+    def s1_setup(self):
+        # Set up ARP rules for switch 1
+        self.setup()
 
     def s2_setup(self):
-        arp_rule = of.ofp_flow_mod()
-        arp_rule.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(arp_rule)
+        # Set up ARP rules for switch 2
+        self.setup()
 
     def s3_setup(self):
-        arp_rule = of.ofp_flow_mod()
-        arp_rule.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(arp_rule)
+        # Set up ARP rules for switch 3
+        self.setup()
 
     def cores21_setup(self):
         hnotrust_drop_rule = of.ofp_flow_mod()
@@ -86,9 +93,8 @@ class Part4Controller(object):
         self.connection.send(serv1_drop_rule)
 
     def dcs31_setup(self):
-        arp_rule = of.ofp_flow_mod()
-        arp_rule.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(arp_rule)
+        # Set up ARP rules for switch 31
+        self.setup()
 
     # used in part 4 to handle individual ARP packets
     # not needed for part 3 (USE RULES!)
@@ -115,7 +121,7 @@ class Part4Controller(object):
         mac = str(arp_payload.hwsrc)
         port = event.port
         self.arp_table[ip] = (mac, port)
-        print(f"Learning address for ip {ip}: mac : {mac} port : {port}")
+        print(f"Learned address for IP {ip}: MAC {mac}, Port {port}")
 
     def send_arp_reply(self, packet, event) :
         # proxy the ARP replies
@@ -143,11 +149,11 @@ class Part4Controller(object):
         ip_src = str(ip_packet.srcip)
         ip_dst = str(ip_packet.dstip)
 
-        print(f"Checking if ip_dst {ip_dst} is in arp_table: {self.arp_table}")
+        print(f"Verifying if destination IP {ip_dst} exists in ARP table: {self.arp_table}")
 
         if ip_dst in self.arp_table:
             mac, port = self.arp_table[ip_dst]
-            print(f"Record for ip {ip_dst} found. mac {mac} port {port}")
+            print(f"Found record for IP {ip_dst}: MAC {mac}, Port {port}")
             forward_rule = of.ofp_flow_mod()
             forward_rule.match.dl_type = 0x0800
             forward_rule.match.nw_dst = IPAddr(ip_dst)
@@ -166,7 +172,7 @@ class Part4Controller(object):
                 ethernet_record.dst = forward_rule.actions.append(of.ofp_action_dl_addr.set_dst(EthAddr(mac)))
                 self.resend_packet(packet, port)
         else:
-            print(f"No entry in ARP records for {ip_dst}, flooding ARP request.")
+            print(f"No ARP entry found for {ip_dst}, broadcasting ARP request.")
 
             arp_req = arp()
             arp_req.opcode = arp.REQUEST
