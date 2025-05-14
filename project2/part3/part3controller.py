@@ -56,129 +56,93 @@ class Part3Controller(object):
             print("UNKNOWN SWITCH")
             exit(1)
 
-    def s1_setup(self):
-        """
-        Setup rules for switch 1 (connected to h10)
-        - Allow all IPv4 and ARP traffic to be flooded
-        """
-        # Allow all IPv4 traffic (flooding)
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x800  # IPv4
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
+    
+    def add_rule(self, dl_type=None, priority=0, proto=None, src=None, dst=None, port=None):
+        rule = of.ofp_flow_mod()
+        rule.priority = priority
+
+        if dl_type is not None:
+            rule.match.dl_type = dl_type
+        if proto is not None:
+            rule.match.nw_proto = proto
+        if src is not None:
+            rule.match.nw_src = src
+        if dst is not None:
+            rule.match.nw_dst = dst
         
-        # Allow ARP traffic (necessary for hosts to find each other)
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x806  # ARP
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
+        if port is not None:
+            rule.actions.append(of.ofp_action_output(port=port))
+        
+        self.connection.send(rule)
+
+    def setup(self):
+        # allow all traffic
+        self.add_rule(priority=1, port=of.OFPP_FLOOD)
+    
+    def s1_setup(self):
+        # put switch 1 rules here
+        self.setup()
 
     def s2_setup(self):
-        """
-        Setup rules for switch 2 (connected to h20)
-        - Allow all IPv4 and ARP traffic to be flooded
-        """
-        # Allow all IPv4 traffic (flooding)
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x800  # IPv4
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
-        
-        # Allow ARP traffic
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x806  # ARP
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
+        # put switch 2 rules here
+        self.setup()
 
     def s3_setup(self):
-        """
-        Setup rules for switch 3 (connected to h30)
-        - Allow all IPv4 and ARP traffic to be flooded
-        """
-        # Allow all IPv4 traffic (flooding)
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x800  # IPv4
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
-        
-        # Allow ARP traffic
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x806  # ARP
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
+        # put switch 3 rules here
+        self.setup()
 
     def cores21_setup(self):
-        """
-        Setup rules for core switch (central router)
-        - Route traffic between different subnets with specific ports
-        - Implement firewall policies to protect trusted hosts
-        """
-        # Create a routing table for the core switch
-        # Map each subnet to the appropriate output port
-        routing_table = {
-            "h10": 1,    # Port 1 leads to switch s1 (h10)
-            "h20": 2,    # Port 2 leads to switch s2 (h20)
-            "h30": 3,    # Port 3 leads to switch s3 (h30)
-            "serv1": 4,  # Port 4 leads to datacenter switch (serv1)
-            "hnotrust": 5 # Port 5 leads to untrusted host
-        }
-        
-        # Set up routing rules for each subnet
-        for src_host, src_subnet in SUBNETS.items():
-            for dst_host, dst_subnet in SUBNETS.items():
-                if src_host != dst_host:
-                    # 1. Block ICMP traffic from hnotrust to any trusted host
-                    if src_host == "hnotrust" and dst_host in ["h10", "h20", "h30", "serv1"]:
-                        msg = of.ofp_flow_mod()
-                        msg.priority = 100  # Higher priority to override general rules
-                        msg.match.dl_type = 0x800  # IPv4
-                        msg.match.nw_proto = 1  # ICMP
-                        msg.match.nw_src = src_subnet
-                        msg.match.nw_dst = dst_subnet
-                        # No actions means drop
-                        self.connection.send(msg)
-                    
-                    # 2. Block all IP traffic from hnotrust to serv1
-                    if src_host == "hnotrust" and dst_host == "serv1":
-                        msg = of.ofp_flow_mod()
-                        msg.priority = 99  # Lower than ICMP but higher than general rules
-                        msg.match.dl_type = 0x800  # IPv4
-                        msg.match.nw_src = src_subnet
-                        msg.match.nw_dst = dst_subnet
-                        # No actions means drop
-                        self.connection.send(msg)
-                    
-                    # 3. Allow all other IP traffic between any hosts
-                    msg = of.ofp_flow_mod()
-                    msg.priority = 50  # Lower priority general rule
-                    msg.match.dl_type = 0x800  # IPv4
-                    msg.match.nw_src = src_subnet
-                    msg.match.nw_dst = dst_subnet
-                    msg.actions.append(of.ofp_action_output(port=routing_table[dst_host]))
-                    self.connection.send(msg)
-        
-        # Allow all ARP traffic
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x806  # ARP
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
+        ports = {"h10": 1, "h20": 2, "h30": 3, "serv1": 4, "hnotrust": 5}
+
+        # handle ARP
+        self.add_rule(dl_type=0x806, priority=200, port=of.OFPP_FLOOD)
+
+        # block hnotrust from sending IP to serv1
+        self.add_rule(dl_type=0x800, priority=100, src=IPS["hnotrust"], dst=IPS["serv1"])
+
+        # block hnotrust from sending all ICMP
+        self.add_rule(dl_type=0x800, priority=100, proto=1, src=IPS["hnotrust"])
+
+        # let serv1 communicate with hnotrust
+        self.add_rule(
+            dl_type=0x800,
+            priority=100, 
+            src=IPS["serv1"], 
+            dst=IPS["hnotrust"], 
+            port=ports["hnotrust"]
+        )
+
+        # otherwise allow all traffic between trusted hosts
+        internal_hosts = ["h10", "h20", "h30", "serv1"]
+        for src in internal_hosts:
+            for dst in internal_hosts:
+                if src != dst:
+                    self.add_rule(
+                        dl_type=0x800,
+                        priority=50,
+                        src=IPS[src],
+                        dst=IPS[dst],
+                        port=ports[dst]
+                    )
+
+        # allow communication between regular hosts and hnotrust
+        for host in internal_hosts[:3]:
+            self.add_rule(
+                dl_type=0x800,
+                priority=50,
+                src=IPS["hnotrust"],
+                dst=IPS[host],
+                port=ports[host]
+            )
+            self.add_rule(
+                dl_type=0x800, priority=50,
+                src=IPS[host], dst=IPS["hnotrust"],
+                port=ports["hnotrust"]
+            )
 
     def dcs31_setup(self):
-        """
-        Setup rules for datacenter switch (connected to serv1)
-        - Allow all IPv4 and ARP traffic to be flooded
-        """
-        # Allow all IPv4 traffic (flooding)
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x800  # IPv4
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
-        
-        # Allow ARP traffic
-        msg = of.ofp_flow_mod()
-        msg.match.dl_type = 0x806  # ARP
-        msg.actions.append(of.ofp_action_output(port=of.OFPP_FLOOD))
-        self.connection.send(msg)
+        # put datacenter switch rules here
+        self.setup()
 
     # used in part 4 to handle individual ARP packets
     # not needed for part 3 (USE RULES!)
@@ -205,7 +169,6 @@ class Part3Controller(object):
         print(
             "Unhandled packet from " + str(self.connection.dpid) + ":" + packet.dump()
         )
-
 
 def launch():
     """
