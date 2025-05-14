@@ -10,7 +10,6 @@ from pox.lib.packet import arp, ethernet
 
 log = core.getLogger()
 
-# Convenience mappings of hostnames to ips
 IPS = {
     "h10": "10.0.1.10",
     "h20": "10.0.2.20",
@@ -19,7 +18,6 @@ IPS = {
     "hnotrust": "172.16.10.100",
 }
 
-# Convenience mappings of hostnames to subnets
 SUBNETS = {
     "h10": "10.0.1.0/24",
     "h20": "10.0.2.0/24",
@@ -35,16 +33,12 @@ class Part4Controller(object):
 
     def __init__(self, connection):
         print(connection.dpid)
-        # Keep track of the connection to the switch so that we can
-        # send it messages!
         self.connection = connection
 
         # create ARP table to map IPs to MAC addresses and port
         self.arp_table = {}
 
-        # This binds our PacketIn event listener
         connection.addListeners(self)
-        # use the dpid to figure out what switch is being created
         if connection.dpid == 1:
             self.s1_setup()
         elif connection.dpid == 2:
@@ -196,12 +190,12 @@ class Part4Controller(object):
         forwarded to this method to be handled by the controller
         """
 
-        packet = event.parsed  # This is the parsed packet data.
+        packet = event.parsed 
         if not packet.parsed:
             log.warning("Ignoring incomplete packet")
             return
 
-        packet_in = event.ofp  # The actual ofp_packet_in message.
+        packet_in = event.ofp
 
         if packet.type == packet.ARP_TYPE :
             self.handle_arp(packet, event)
